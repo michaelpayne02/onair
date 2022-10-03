@@ -33,8 +33,12 @@ func update(topic string, states []*Vmix) {
 // Regular expression to match incoming messages
 var activators, _ = regexp.Compile(`ACTS OK (Recording|Streaming|External|MultiCorder) (\d)`)
 
-func (vmix Vmix) connect(topic string, instances []*Vmix) {
+func (vmix *Vmix) connect(topic string, instances []*Vmix) {
 	for {
+		vmix.Recording, vmix.Streaming = false, false
+		vmix.External, vmix.MultiCorder = false, false
+		update(topic, instances)
+
 		// Attempt to connect to the tcp socket every 15 seconds
 		conn, err := net.DialTimeout("tcp", vmix.Host, 5*time.Second)
 		if err != nil {

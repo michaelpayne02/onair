@@ -42,23 +42,20 @@ func main() {
 	if token := mqttClient.Connect(); token.Wait() && token.Error() != nil {
 		panic(token.Error())
 	}
-
 	log.Println("Connected to", getEnv("MQTT_HOST"))
 
-	// Start routines for each host and hang indefinitely
 	hosts, exists := os.LookupEnv("VMIX_HOSTS")
 	if !exists {
 		hosts = "127.0.0.1:8099"
 	}
 
+	// Create & connect vMix instances using goroutines
 	var wg sync.WaitGroup
 	wg.Add(1)
-	// Create & connect vMix instances using goroutines
 	for _, host := range strings.Split(hosts, ",") {
-		vmix := Vmix{Host: host}
-
-		instances = append(instances, &vmix)
-		go vmix.connect(topic, instances)
+		instance := Vmix{Host: host}
+		instances = append(instances, &instance)
+		go instance.connect(topic, instances)
 	}
 	wg.Wait()
 }
