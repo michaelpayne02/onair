@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"fmt"
 	"log"
 	"net"
 	"regexp"
@@ -18,22 +17,23 @@ func (vmix Vmix) isActive() bool {
 	return (vmix.Recording || vmix.Streaming || vmix.External || vmix.MultiCorder)
 }
 
-func (vmix Vmix) update(topic string) *Vmix {
+func update(topic string, states []*Vmix) {
 	// Create message
 	payload := "OFF"
-	if vmix.isActive() {
-		payload = "ON"
+	for _, state := range states {
+		if state.isActive() {
+			payload = "ON"
+		}
 	}
 
 	// Publish commands depending on active state
 	mqttClient.Publish(topic, 2, false, payload).Wait()
-	return &vmix
 }
 
 // Regular expression to match incoming messages
 var activators, _ = regexp.Compile(`ACTS OK (Recording|Streaming|External|MultiCorder) (\d)`)
 
-func (vmix Vmix) connect(topic string) *Vmix {
+func (vmix Vmix) connect(topic string, instances []*Vmix) {
 	for {
 		// Attempt to connect to the tcp socket every 15 seconds
 		conn, err := net.DialTimeout("tcp", vmix.Host, 5*time.Second)
@@ -42,12 +42,11 @@ func (vmix Vmix) connect(topic string) *Vmix {
 			continue
 		}
 
-		fmt.Println(vmix.Host, "Connected")
+		log.Println(vmix.Host, "Connected")
 
-		// Init: subscribe to activators and query the state of them
-		vmix.update()
-		fmt.Fprint(conn, "SUBSCRIBE ACTS\r\nACTS Recording\r\nACTS Streaming\r\n"+
-			"ACTS External\r\nACTS MultiCorder\r\n")
+		// Init: subscribe to activators and query their state
+		conn.Write([]byte("SUBSCRIBE ACTS\r\nACTS Recording\r\nACTS Streaming\r\n" +
+			"ACTS External\r\nACTS MultiCorder\r\n"))
 
 		// Create a scanner that iterates over lines
 		scanner := bufio.NewScanner(conn)
@@ -62,9 +61,9 @@ func (vmix Vmix) connect(topic string) *Vmix {
 			}
 
 			var act, state = args[1], args[2] == "1"
-			prevState := vmix.isActive()
+			log.Println(vmix.Host, act, state)
 
-			// Update the state of vMix
+			// Update the state of this vMix instance
 			switch act {
 			case "Recording":
 				vmix.Recording = state
@@ -77,13 +76,8 @@ func (vmix Vmix) connect(topic string) *Vmix {
 			default:
 			}
 
-			// Only publish messages if active state has changed
-			if vmix.isActive() != prevState {
-				fmt.Println(vmix.Host, act, state)
-				vmix.update()
-			}
+			update(topic, instances)
 		}
-		Vmix{}.update(topic)
 		log.Println(vmix.Host, "Disconnected")
 	}
 }
